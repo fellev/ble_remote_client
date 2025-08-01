@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.BluetoothLeScanner
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 class BLEClient(private val context: Context) {
 
@@ -35,6 +37,9 @@ class BLEClient(private val context: Context) {
     val _lastConnectionTime = MutableStateFlow("Never")
     val lastConnectionTime: StateFlow<String> get() = _lastConnectionTime
     private var isScanning = false
+
+    val CLIENT_CHARACTERISTIC_CONFIG_UUID = "00002902-0000-1000-8000-00805f9b34fb"
+
 
     companion object {
         private const val TAG = "BLEClient"
@@ -66,13 +71,26 @@ class BLEClient(private val context: Context) {
         scanCallback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult?) {
                 result?.device?.let { device ->
-                    if (result.scanRecord?.serviceUuids?.any { it.uuid == BLEUUIDs.SERVICE_UUID } == true) {
-                        Log.i(TAG, "Device found: ${device.name} (${device.address})")
+//                    if (result.scanRecord?.serviceUuids?.any { it.uuid == BLEUUIDs.SERVICE_UUID } == true) {
+//                        Log.i(TAG, "Device found: ${device.name} (${device.address})")
+//                        onDeviceFound(result)
+//                        stopScan()
+//                    }
+//                    else {
+//                        Log.i(TAG, "Device not found: ${device.name} (${device.address}) ${result.scanRecord?.serviceUuids}")
+//                    }
+                    //Find the target device by MAC
+                    if (device.address == "98:A3:16:E2:64:3E") {
+                        targetDevice = device
+                        Log.i(TAG, "Target device found: ${device.name} (${device.address})")
+                        //Print the UUID
+//                        Log.i(TAG, "UUID: ${result.scanRecord?.serviceUuids}")
+
+                        // Connect to GATT
+                        val gatt = device.connectGatt(context, false, gattCallback)
+
                         onDeviceFound(result)
                         stopScan()
-                    }
-                    else {
-                        Log.i(TAG, "Device not found: ${device.name} (${device.address}) ${result.scanRecord?.serviceUuids}")
                     }
                 }
             }
@@ -126,9 +144,26 @@ class BLEClient(private val context: Context) {
         override fun onServicesDiscovered(gatt: BluetoothGatt?, status: Int) {
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 Log.i(TAG, "Services discovered")
+                // Use let to safely access services if gatt is not null
+                gatt?.getServices()?.let { services -> // services is now a non-nullable List
+                    for (service in services) {
+                        Log.d(TAG, "Service UUID: ${service.uuid}")
+                        // Also handle potentially null characteristics for each service
+                        service.characteristics?.let { characteristics -> // characteristics is now non-nullable
+                            for (char in characteristics) {
+                                Log.d(TAG, "  Characteristic UUID: ${char.uuid}")
+                            }
+                        }
+                    }
+                }
                 val characteristic = gatt?.getService(BLEUUIDs.SERVICE_UUID)?.getCharacteristic(BLEUUIDs.CHAR_UUID)
                 if (characteristic != null) {
                     gatt.setCharacteristicNotification(characteristic, true)
+
+                    val descriptor = characteristic.getDescriptor(UUID.fromString(CLIENT_CHARACTERISTIC_CONFIG_UUID))
+                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    gatt.writeDescriptor(descriptor)
+
                     Log.i(TAG, "Notifications enabled")
                 }
             } else {
