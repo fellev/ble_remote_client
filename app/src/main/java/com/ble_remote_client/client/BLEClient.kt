@@ -131,6 +131,21 @@ class BLEClient(private val context: Context) {
     @SuppressLint("MissingPermission")
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+            val device = gatt?.device
+            val stateStr = when (newState) {
+                BluetoothProfile.STATE_CONNECTED -> "CONNECTED"
+                BluetoothProfile.STATE_DISCONNECTED -> "DISCONNECTED"
+                BluetoothProfile.STATE_CONNECTING -> "CONNECTING"
+                BluetoothProfile.STATE_DISCONNECTING -> "DISCONNECTING"
+                else -> "UNKNOWN"
+            }
+
+            val statusStr = when (status) {
+                BluetoothGatt.GATT_SUCCESS -> "SUCCESS"
+                else -> "ERROR: $status"
+            }
+
+            Log.i(TAG, "onConnectionStateChange: device=${device?.address}, newState=$stateStr, status=$statusStr")
             if (newState == BluetoothProfile.STATE_CONNECTED) {
                 Log.i(TAG, "Connected to GATT server")
                 gatt?.discoverServices()

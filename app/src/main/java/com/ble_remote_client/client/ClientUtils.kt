@@ -2,6 +2,7 @@ package com.ble_remote_client.client
 
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.core.content.ContextCompat
 
 object ClientUtils {
@@ -10,6 +11,7 @@ object ClientUtils {
         val intent = Intent(context, BLEClientService::class.java).apply {
             action = BLEClientService.ACTION_START_CLIENT
         }
+        Log.d("ClientUtils", "Starting client service")
         ContextCompat.startForegroundService(context, intent)
     }
 
@@ -17,6 +19,8 @@ object ClientUtils {
         val intent = Intent(context, BLEClientService::class.java).apply {
             action = BLEClientService.ACTION_STOP_CLIENT
         }
+
+        Log.d("ClientUtils", "Stopping client service")
         ContextCompat.startForegroundService(context, intent)
     }
 }
