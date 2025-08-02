@@ -9,6 +9,16 @@
         android:layout_height="wrap_content"
         android:paddingTop="80dp">
 
+        <!-- Home Assistant URL -->
+        <EditText
+            android:id="@+id/editUrl"
+            android:hint="Home Assistant URL (e.g., http://192.168.1.100:8123)"
+            android:inputType="textUri"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Home Assistant Token -->
         <EditText
             android:id="@+id/editToken"
             android:hint="Home Assistant Token"

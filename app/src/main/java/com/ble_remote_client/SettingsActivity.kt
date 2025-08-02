@@ -36,6 +36,9 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var appConfig: AppConfig
     private var selectedIndex = 0
 
+    private lateinit var editUrl: EditText
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -49,6 +52,9 @@ class SettingsActivity : AppCompatActivity() {
         btnSave = findViewById(R.id.btnSave)
         btnCancel = findViewById(R.id.btnCancel)
         editToken = findViewById(R.id.editToken)
+        editUrl = findViewById(R.id.editUrl)
+
+
 
         loadConfig()
 
@@ -73,6 +79,7 @@ class SettingsActivity : AppCompatActivity() {
 
         // Initialize token field
         editToken.setText(appConfig.haToken)
+        editUrl.setText(appConfig.haUrl)
 
         btnSave.setOnClickListener {
             // Update current button config
@@ -87,6 +94,7 @@ class SettingsActivity : AppCompatActivity() {
 
             // Update token
             appConfig.haToken = editToken.text.toString()
+            appConfig.haUrl = editUrl.text.toString()
 
             saveConfig()
             finish()

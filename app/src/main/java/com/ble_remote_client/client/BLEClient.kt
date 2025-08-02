@@ -16,6 +16,7 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.util.Log
+import com.example.yourapp.HomeAssistantCommandHandler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.text.SimpleDateFormat
@@ -175,6 +176,8 @@ class BLEClient(private val context: Context) {
             characteristic?.value?.let {
                 val message = it.toString(Charsets.UTF_8)
                 Log.i(TAG, "Message received: $message")
+                val haHandler = HomeAssistantCommandHandler(context)
+                haHandler.handleBleCommand(message)
             }
         }
 
