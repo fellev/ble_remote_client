@@ -27,8 +27,7 @@ import java.util.UUID
 class BLEClient(private val context: Context) {
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-    private val bluetoothAdapter = bluetoothManager.adapter
-    private val bluetoothLeScanner: BluetoothLeScanner? = bluetoothAdapter?.bluetoothLeScanner
+
     private var bluetoothGatt: BluetoothGatt? = null
 
     private var scanCallback: ScanCallback? = null
@@ -48,121 +47,6 @@ class BLEClient(private val context: Context) {
         private const val TAG = "BLEClient"
         private const val SCAN_PERIOD: Long = 10000 // Stops scanning after 10 seconds.
     }
-
-//    @SuppressLint("MissingPermission")
-//    fun startScan(
-//        filters: List<ScanFilter>? = null,
-//        settings: ScanSettings? = null,
-//        onDeviceFound: (ScanResult) -> Unit,
-//        onScanFailed: (Int) -> Unit,
-//        scanTimeoutMillis: Long = SCAN_PERIOD, // scanTimeoutMillis is defined but not used to stop scan after timeout
-//    ) {
-//        if (bluetoothAdapter == null || bluetoothLeScanner == null) {
-//            Log.w(TAG, "Bluetooth not supported or adapter not initialized.")
-//            onScanFailed(ScanCallback.SCAN_FAILED_INTERNAL_ERROR)
-//            return
-//        }
-//
-//        if (!bluetoothAdapter.isEnabled) {
-//            Log.w(TAG, "Bluetooth is not enabled.")
-//            onScanFailed(ScanCallback.SCAN_FAILED_INTERNAL_ERROR) // Consider a more specific error code if available
-//            return
-//        }
-//
-//        // Stop any existing scan before starting a new one
-//        if (isScanning) {
-//            stopScan()
-//        }
-//        // Disconnect if already connected to a device
-//        if (_isConnected.value) {
-//            Log.d(TAG, "Already connected. Disconnecting before starting new scan.")
-//            disconnect() // Ensure previous connection is cleared
-//        }
-//
-//
-//        val scanner = bluetoothAdapter.bluetoothLeScanner // Already have bluetoothLeScanner, can use that
-//
-//        scanCallback = object : ScanCallback() {
-//            override fun onScanResult(callbackType: Int, result: ScanResult?) {
-//                result?.device?.let { device ->
-//                    // Simplified: Assuming you want to call onDeviceFound for any device found
-//                    // And then connectToDevice if it's the target.
-//                    // The original logic connected within the scan callback which might be okay for one device,
-//                    // but onDeviceFound suggests a more general callback.
-//
-//                    // If you have a specific target MAC address, filter here or let the caller (BLEClientService) do it.
-//                    // For now, let's assume the service handles the decision to connect based on device.name.
-//                    onDeviceFound(result)
-//
-//                    // The original code in BLEClientService has:
-//                    // if (device.name == "ESP32_GATT_SERVER") {
-//                    //    bleClient.connectToDevice(device)
-//                    //    bleClient.stopScan()
-//                    // }
-//                    // This logic should ideally reside in the service after onDeviceFound.
-//                    // The BLEClient could just find devices.
-//                    // For now, I'm removing the automatic connection and stopScan from here to align with
-//                    // the idea that `startScan` finds devices and `connectToDevice` connects.
-//                }
-//            }
-//
-//            override fun onScanFailed(errorCode: Int) {
-//                Log.e(TAG, "Scan failed: $errorCode")
-//                onScanFailed(errorCode)
-//                isScanning = false // Update scanning state
-//            }
-//        }
-//
-//        scanner?.startScan(filters, settings ?: defaultScanSettings(), scanCallback)
-//        isScanning = true
-//        Log.d(TAG, "Started scanning")
-//        // If scanTimeoutMillis is intended to stop the scan, you'd need a Handler to post a delayed stopScan runnable.
-//    }
-
-//    @SuppressLint("MissingPermission")
-//    fun stopScan() {
-//        if (isScanning && bluetoothLeScanner != null && scanCallback != null) {
-//            try {
-//                bluetoothLeScanner.stopScan(scanCallback)
-//                Log.d(TAG, "Scan stopped")
-//            } catch (e: Exception) {
-//                Log.e(TAG, "Error stopping scan: ${e.message}")
-//            } finally {
-//                scanCallback = null
-//                isScanning = false
-//                _isConnected.value = false
-//            }
-//        } else {
-//            Log.d(TAG, "Scan not active or scanner/callback not available.")
-//        }
-//    }
-
-//    private fun defaultScanSettings(): ScanSettings {
-//        return ScanSettings.Builder()
-//            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-//            .build()
-//    }
-
-//    @SuppressLint("MissingPermission")
-//    fun connectToDevice(device: BluetoothDevice) {
-//        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-//            Log.w(TAG, "Bluetooth adapter not initialized or not enabled.")
-//            return
-//        }
-//        // If already connected to this device or another, disconnect first
-//        if (bluetoothGatt != null) {
-//            Log.d(TAG, "connectToDevice: GATT instance exists. Address: ${bluetoothGatt?.device?.address}, New Device: ${device.address}")
-//            if (bluetoothGatt?.device?.address == device.address && _isConnected.value) {
-//                Log.i(TAG, "Already connected to ${device.address}. No action needed.")
-//                return
-//            }
-//            Log.d(TAG, "Disconnecting existing GATT connection before connecting to new device.")
-//            disconnect() // Disconnect previous
-//        }
-//
-//        Log.i(TAG, "Connecting to device: ${device.name} (${device.address})")
-//        bluetoothGatt = device.connectGatt(context, false, gattCallback)
-//    }
 
     @SuppressLint("MissingPermission")
     fun connectByMac(mac: String): BluetoothGatt? {
