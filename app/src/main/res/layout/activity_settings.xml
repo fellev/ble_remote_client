@@ -36,6 +36,15 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp" />
 
+        <!-- Target BLE Device MAC Address -->
+        <EditText
+            android:id="@+id/editTargetDeviceMac"
+            android:hint="Target BLE Device MAC Address"
+            android:inputType="text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp" />
+
         <!-- Button selector -->
         <TextView
             android:text="Select Button"

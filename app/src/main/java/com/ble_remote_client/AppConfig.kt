@@ -10,5 +10,6 @@ data class AppConfig(
     var haUrl: String = "",  // e.g., http://192.168.1.100:8123 or http://homeassistant.local:8123
     var haToken: String = "",
     var targetDeviceName: String = "", // Added for BLE target device name
+    var targetDeviceMacAddress: String = "98:A3:16:E2:64:3E", // Default MAC address
     var buttonConfigs: MutableList<ButtonConfig> = MutableList(4) { ButtonConfig(name = "Button ${it + 1}") }
 )

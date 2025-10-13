@@ -8,10 +8,7 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Spinner
-import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import com.google.gson.Gson
 
 data class ButtonConfig(
@@ -32,7 +29,8 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var btnSave: Button
     private lateinit var btnCancel: Button
     private lateinit var editToken: EditText
-    private lateinit var editTargetDeviceName: EditText // Added
+    private lateinit var editTargetDeviceName: EditText
+    private lateinit var editTargetDeviceMac: EditText // Added
 
     private lateinit var appConfig: AppConfig
     private var selectedIndex = 0
@@ -54,7 +52,8 @@ class SettingsActivity : AppCompatActivity() {
         btnCancel = findViewById(R.id.btnCancel)
         editToken = findViewById(R.id.editToken)
         editUrl = findViewById(R.id.editUrl)
-        editTargetDeviceName = findViewById(R.id.editTargetDeviceName) // Added
+        editTargetDeviceName = findViewById(R.id.editTargetDeviceName)
+        editTargetDeviceMac = findViewById(R.id.editTargetDeviceMac) // Added
 
 
         loadConfig()
@@ -81,7 +80,8 @@ class SettingsActivity : AppCompatActivity() {
         // Initialize fields from appConfig
         editToken.setText(appConfig.haToken)
         editUrl.setText(appConfig.haUrl)
-        editTargetDeviceName.setText(appConfig.targetDeviceName) // Added
+        editTargetDeviceName.setText(appConfig.targetDeviceName)
+        editTargetDeviceMac.setText(appConfig.targetDeviceMacAddress) // Added
 
         btnSave.setOnClickListener {
             // Update current button config
@@ -97,7 +97,8 @@ class SettingsActivity : AppCompatActivity() {
             // Update appConfig from fields
             appConfig.haToken = editToken.text.toString()
             appConfig.haUrl = editUrl.text.toString()
-            appConfig.targetDeviceName = editTargetDeviceName.text.toString() // Added
+            appConfig.targetDeviceName = editTargetDeviceName.text.toString()
+            appConfig.targetDeviceMacAddress = editTargetDeviceMac.text.toString() // Added
 
             saveConfig()
             finish()
