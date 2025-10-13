@@ -32,6 +32,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var btnSave: Button
     private lateinit var btnCancel: Button
     private lateinit var editToken: EditText
+    private lateinit var editTargetDeviceName: EditText // Added
 
     private lateinit var appConfig: AppConfig
     private var selectedIndex = 0
@@ -53,7 +54,7 @@ class SettingsActivity : AppCompatActivity() {
         btnCancel = findViewById(R.id.btnCancel)
         editToken = findViewById(R.id.editToken)
         editUrl = findViewById(R.id.editUrl)
-
+        editTargetDeviceName = findViewById(R.id.editTargetDeviceName) // Added
 
 
         loadConfig()
@@ -77,9 +78,10 @@ class SettingsActivity : AppCompatActivity() {
         spinnerShortAction.adapter = actionAdapter
         spinnerLongAction.adapter = actionAdapter
 
-        // Initialize token field
+        // Initialize fields from appConfig
         editToken.setText(appConfig.haToken)
         editUrl.setText(appConfig.haUrl)
+        editTargetDeviceName.setText(appConfig.targetDeviceName) // Added
 
         btnSave.setOnClickListener {
             // Update current button config
@@ -92,9 +94,10 @@ class SettingsActivity : AppCompatActivity() {
             )
             appConfig.buttonConfigs[selectedIndex] = config
 
-            // Update token
+            // Update appConfig from fields
             appConfig.haToken = editToken.text.toString()
             appConfig.haUrl = editUrl.text.toString()
+            appConfig.targetDeviceName = editTargetDeviceName.text.toString() // Added
 
             saveConfig()
             finish()

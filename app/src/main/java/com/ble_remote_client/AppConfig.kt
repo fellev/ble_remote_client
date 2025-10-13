@@ -9,5 +9,6 @@ import androidx.core.view.WindowInsetsCompat
 data class AppConfig(
     var haUrl: String = "",  // e.g., http://192.168.1.100:8123 or http://homeassistant.local:8123
     var haToken: String = "",
+    var targetDeviceName: String = "", // Added for BLE target device name
     var buttonConfigs: MutableList<ButtonConfig> = MutableList(4) { ButtonConfig(name = "Button ${it + 1}") }
 )

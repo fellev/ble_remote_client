@@ -27,6 +27,15 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="12dp" />
 
+        <!-- Target BLE Device Name -->
+        <EditText
+            android:id="@+id/editTargetDeviceName"
+            android:hint="Target BLE Device Name (e.g., BLE Remote Server)"
+            android:inputType="text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp" />
+
         <!-- Button selector -->
         <TextView
             android:text="Select Button"

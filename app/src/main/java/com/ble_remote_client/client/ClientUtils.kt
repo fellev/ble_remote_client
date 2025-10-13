@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 object ClientUtils {
 
     fun startClientService(context: Context) {
+
         val intent = Intent(context, BLEClientService::class.java).apply {
             action = BLEClientService.ACTION_START_CLIENT
         }
