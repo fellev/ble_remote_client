@@ -39,6 +39,14 @@ class BLEClientService : Service() {
     private val NOTIFICATION_ID = 7
 
     private var isProcessingStartClient: Boolean = false // Flag to prevent re-entrancy
+    private var isAutoReconnectEnabled = false
+
+    private val reconnectRunnable = Runnable {
+        if (isAutoReconnectEnabled) {
+            Log.i(TAG, "Executing scheduled reconnection attempt.")
+            tryConnectToServer(this)
+        }
+    }
 
     companion object {
         const val ACTION_START_CLIENT = "start_srv"
@@ -54,12 +62,26 @@ class BLEClientService : Service() {
         private const val CHANNEL_ID = "BluetoothClientChannel"
         private const val PREFS_NAME = "button_config_prefs" // Ensure this matches SettingsActivity
         private const val KEY_APP_CONFIG = "appConfig"       // Key for the AppConfig JSON
+        private const val RECONNECT_DELAY_MS = 5000L
     }
 
     override fun onCreate() {
         super.onCreate()
         bleClient = BLEClient(this)
-        Log.d(TAG, "BLEClientService onCreate: bleClient initialized.")
+        // Set the callback that BLEClient will invoke on any disconnection.
+        bleClient.onDisconnect = {
+            // This callback may be invoked from a background thread, so post to the main handler.
+            handler.post {
+                _isConnected.value = false
+                Log.w(TAG, "onDisconnect callback received from BLEClient.")
+                if (isAutoReconnectEnabled) {
+                    scheduleReconnect()
+                } else {
+                    Log.i(TAG, "Auto-reconnect is disabled, not attempting to reconnect.")
+                }
+            }
+        }
+        Log.d(TAG, "BLEClientService onCreate: bleClient initialized and onDisconnect callback is set.")
     }
 
     @SuppressLint("MissingPermission")
@@ -110,8 +132,8 @@ class BLEClientService : Service() {
      override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "BLEClientService onDestroy.")
+        cancelReconnect() // Cancel any pending reconnects
         if (::bleClient.isInitialized) {
-            bleClient.stopScan()
             bleClient.disconnect()
         }
         _isClientServiceRunning.value = false
@@ -133,6 +155,7 @@ class BLEClientService : Service() {
             ACTION_START_CLIENT -> {
                 Log.i(TAG, "ACTION_START_CLIENT received.")
                 isProcessingStartClient = true
+                isAutoReconnectEnabled = true // Enable the reconnect loop
 
                 handler.post {
                     if (!::bleClient.isInitialized) {
@@ -141,7 +164,6 @@ class BLEClientService : Service() {
                     }
 
                     Log.d(TAG, "ACTION_START_CLIENT: Preparing to start/restart BLE operations.")
-                    bleClient.stopScan()
                     bleClient.disconnect()
 
                     if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
@@ -171,9 +193,10 @@ class BLEClientService : Service() {
 
             ACTION_STOP_CLIENT -> {
                 Log.i(TAG, "ACTION_STOP_CLIENT: Stopping client service.")
+                isAutoReconnectEnabled = false // Disable the reconnect loop
+                cancelReconnect() // Stop any pending reconnect attempts
                 isProcessingStartClient = true
                 if (::bleClient.isInitialized) {
-                    bleClient.stopScan()
                     bleClient.disconnect()
                 }
                 _isClientServiceRunning.value = false
@@ -191,6 +214,16 @@ class BLEClientService : Service() {
         return START_STICKY
     }
 
+    private fun scheduleReconnect() {
+        cancelReconnect() // Remove any existing callbacks to prevent duplicates
+        Log.i(TAG, "Scheduling a reconnection attempt in ${RECONNECT_DELAY_MS}ms.")
+        handler.postDelayed(reconnectRunnable, RECONNECT_DELAY_MS)
+    }
+
+    private fun cancelReconnect() {
+        handler.removeCallbacks(reconnectRunnable)
+        Log.d(TAG, "Canceled any pending reconnection attempts.")
+    }
     private fun startInForeground() {
         createNotificationChannel()
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)

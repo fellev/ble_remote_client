@@ -107,6 +107,58 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
                     "Connected device ${device.address} does not match auto-connect address ($autoConnectAddress)."
                 )
             }
+        } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED == action) {
+            // Check for BLUETOOTH_CONNECT permission before accessing device details if on Android S+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    Log.w(
+                        TAG,
+                        "BLUETOOTH_CONNECT permission not granted. Cannot process ACL disconnected event."
+                    )
+                    return
+                }
+            }
+
+            val device: BluetoothDevice? =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(
+                        BluetoothDevice.EXTRA_DEVICE,
+                        BluetoothDevice::class.java
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                }
+
+            if (device == null) {
+                Log.w(TAG, "Disconnected device is null.")
+                return
+            }
+
+            Log.i(
+                TAG,
+                "Device disconnected: ${device.name ?: "Unknown Device"} - ${device.address}"
+            )
+
+            val sharedPrefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val autoConnectAddress = sharedPrefs.getString(KEY_AUTO_CONNECT_DEVICE_ADDRESS, null)
+
+            if (autoConnectAddress != null && autoConnectAddress == device.address) {
+                Log.i(
+                    TAG,
+                    "Disconnected device ${device.address} matches auto-connect device. Stopping client service."
+                )
+                ClientUtils.stopClientService(context)
+            } else {
+                Log.d(
+                    TAG,
+                    "Disconnected device ${device.address} does not match auto-connect address ($autoConnectAddress)."
+                )
+            }
         }
     }
 }
