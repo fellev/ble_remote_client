@@ -32,47 +32,47 @@ class BluetoothConnectionReceiver : BroadcastReceiver() {
         Log.d(TAG, "Received action: $action")
 
         if (BluetoothDevice.ACTION_ACL_CONNECTED == action) {
-            // Check for BLUETOOTH_CONNECT permission before accessing device details if on Android S+
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.BLUETOOTH_CONNECT
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    Log.w(
-                        TAG,
-                        "BLUETOOTH_CONNECT permission not granted. Cannot process ACL connected event."
-                    )
-                    // Cannot request permission from a BroadcastReceiver, this should be handled by the Activity.
-                    return
-                }
-                //Check for BLUETOOTH_SCAN permission before accessing device details if on Android R+
-                if (ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.BLUETOOTH_SCAN
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    Log.w(
-                        TAG,
-                        "BLUETOOTH_SCAN permission not granted. Cannot process ACL connected event."
-                    )
-                    // Cannot request permission from a BroadcastReceiver, this should be handled by the Activity.
-                    return
-                }
+//            // Check for BLUETOOTH_CONNECT permission before accessing device details if on Android S+
+//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+//                if (ContextCompat.checkSelfPermission(
+//                        context,
+//                        Manifest.permission.BLUETOOTH_CONNECT
+//                    ) != PackageManager.PERMISSION_GRANTED
+//                ) {
+//                    Log.w(
+//                        TAG,
+//                        "BLUETOOTH_CONNECT permission not granted. Cannot process ACL connected event."
+//                    )
+//                    // Cannot request permission from a BroadcastReceiver, this should be handled by the Activity.
+//                    return
+//                }
+//                //Check for BLUETOOTH_SCAN permission before accessing device details if on Android R+
+//                if (ContextCompat.checkSelfPermission(
+//                        context,
+//                        Manifest.permission.BLUETOOTH_SCAN
+//                    ) != PackageManager.PERMISSION_GRANTED
+//                ) {
+//                    Log.w(
+//                        TAG,
+//                        "BLUETOOTH_SCAN permission not granted. Cannot process ACL connected event."
+//                    )
+//                    // Cannot request permission from a BroadcastReceiver, this should be handled by the Activity.
+//                    return
+//                }
                 //Check for ACCESS_FINE_LOCATION permission before accessing device details if on Android R+
-                if (ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.ACCESS_FINE_LOCATION
-                    ) != PackageManager.PERMISSION_GRANTED
-                ) {
-                    Log.w(
-                        TAG,
-                        "ACCESS_FINE_LOCATION permission not granted. Cannot process ACL connected event."
-                    )
-                    // Cannot request permission from a BroadcastReceiver, this should be handled by the Activity.
-                    return
-                }
-            }
+//                if (ContextCompat.checkSelfPermission(
+//                        context,
+//                        Manifest.permission.ACCESS_FINE_LOCATION
+//                    ) != PackageManager.PERMISSION_GRANTED
+//                ) {
+//                    Log.w(
+//                        TAG,
+//                        "ACCESS_FINE_LOCATION permission not granted. Cannot process ACL connected event."
+//                    )
+//                    // Cannot request permission from a BroadcastReceiver, this should be handled by the Activity.
+//                    return
+//                }
+//            }
 
             val device: BluetoothDevice? =
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

@@ -16,6 +16,9 @@ import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.util.Log
+import android.os.Vibrator
+import android.os.VibrationEffect
+import android.os.Build
 import com.example.yourapp.HomeAssistantCommandHandler // Ensure this import is correct for your project
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -145,6 +148,15 @@ class BLEClient(private val context: Context) {
                             descriptor.value = BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
                             if (gatt.writeDescriptor(descriptor) == true) {
                                 Log.i(TAG, "Successfully wrote CCCD descriptor for ${characteristic.uuid}")
+                                // Vibrate the phone to indicate successful connection and setup
+                                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    vibrator.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.EFFECT_DOUBLE_CLICK))
+                                } else {
+                                    // Deprecated in API 26
+                                    @Suppress("DEPRECATION")
+                                    vibrator.vibrate(500)
+                                }
                             } else {
                                 Log.w(TAG, "Failed to write CCCD descriptor for ${characteristic.uuid}")
                             }

@@ -2,6 +2,10 @@ package com.example.yourapp  // Change this to your actual package
 
 import android.content.Context
 import android.util.Log
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import com.ble_remote_client.AppConfig
 import com.google.gson.Gson
 import okhttp3.*
@@ -81,11 +85,31 @@ class HomeAssistantCommandHandler(private val context: Context) {
 
             override fun onResponse(call: Call, response: Response) {
                 Log.i(TAG, "Home Assistant response: ${response.code}")
+                if (response.isSuccessful) {
+                    Log.i(TAG, "Successfully sent command to Home Assistant for $entityFriendlyName")
+                    vibrate()
+                } else {
+                }
             }
         })
     }
 
     companion object {
         private const val TAG = "HACommandHandler"
+    }
+
+    private fun vibrate() {
+        val duration = 500L // Vibrate for 100 milliseconds
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            val vibrator = vibratorManager.defaultVibrator
+            vibrator.vibrate(VibrationEffect.createOneShot(duration, 255))
+        } else {
+            @Suppress("DEPRECATION")
+            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            if (vibrator.hasVibrator()) {
+                vibrator.vibrate(duration)
+            }
+        }
     }
 }

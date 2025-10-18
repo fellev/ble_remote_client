@@ -62,7 +62,7 @@ class BLEClientService : Service() {
         private const val CHANNEL_ID = "BluetoothClientChannel"
         private const val PREFS_NAME = "button_config_prefs" // Ensure this matches SettingsActivity
         private const val KEY_APP_CONFIG = "appConfig"       // Key for the AppConfig JSON
-        private const val RECONNECT_DELAY_MS = 5000L
+        private const val RECONNECT_DELAY_MS = 100L //5000L
     }
 
     override fun onCreate() {
