@@ -54,17 +54,17 @@ class BLEClient(private val context: Context) {
         val adapter = bluetoothManager.adapter
 
         if (adapter == null) {
-            Log.e("BLE", "Bluetooth not supported on this device")
+            Log.e(TAG, "Bluetooth not supported on this device")
             return null
         }
 
         return try {
             val device = adapter.getRemoteDevice(mac)
-            Log.i("BLE", "Connecting to device $mac...")
+            Log.i(TAG, "Connecting to device $mac...")
             bluetoothGatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
             bluetoothGatt
         } catch (e: IllegalArgumentException) {
-            Log.e("BLE", "Invalid MAC address: $mac", e)
+            Log.e(TAG, "Invalid MAC address: $mac", e)
             null
         }
     }
@@ -124,15 +124,25 @@ class BLEClient(private val context: Context) {
                  Log.w(TAG, "onServicesDiscovered received for a different GATT instance. Ignoring.")
                  return
             }
+
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 Log.i(TAG, "Services discovered for ${gatt?.device?.address}")
+                gatt?.services?.forEach { service ->
+                    Log.i(TAG, "Service: ${service.uuid}")
+                    service.characteristics.forEach { characteristic ->
+                        Log.i(TAG, "  Characteristic: ${characteristic.uuid}")
+                    }
+                }
+
                 val characteristic = gatt?.getService(BLEUUIDs.SERVICE_UUID)?.getCharacteristic(BLEUUIDs.CHAR_UUID)
                 if (characteristic != null) {
+                    Log.i(TAG, "Requesting notification for ${characteristic.uuid}")
+
                     if (gatt?.setCharacteristicNotification(characteristic, true) == true) {
                         Log.i(TAG, "Successfully requested notification for ${characteristic.uuid}")
-                        val descriptor = characteristic.getDescriptor(UUID.fromString(CLIENT_CHARACTERISTIC_CONFIG_UUID))
+                        val descriptor = characteristic.getDescriptor(UUID.fromString(BLEUUIDs.CHAR_UUID_STRING))
                         if (descriptor != null) {
-                            descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                            descriptor.value = BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
                             if (gatt.writeDescriptor(descriptor) == true) {
                                 Log.i(TAG, "Successfully wrote CCCD descriptor for ${characteristic.uuid}")
                             } else {
