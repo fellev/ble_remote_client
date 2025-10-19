@@ -5,11 +5,6 @@ import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
-import android.bluetooth.le.ScanFilter
-import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -20,16 +15,19 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.ParcelUuid
-import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.ble_remote_client.AppConfig
 import com.google.gson.Gson
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import android.bluetooth.BluetoothManager
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 
 class BLEClientService : Service() {
 
@@ -37,6 +35,8 @@ class BLEClientService : Service() {
     private var TAG = "BLEClientService"
     private lateinit var bleClient: BLEClient
     private val NOTIFICATION_ID = 7
+
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var isProcessingStartClient: Boolean = false // Flag to prevent re-entrancy
     private var isAutoReconnectEnabled = false
@@ -56,8 +56,8 @@ class BLEClientService : Service() {
         val isConnected: StateFlow<Boolean> get() = _isConnected
         val _isClientServiceRunning = MutableStateFlow(false)
         val isClientServiceRunning: StateFlow<Boolean> get() = _isClientServiceRunning
-        val _lastConnectionTime = MutableStateFlow<String>("Never")
-        val lastConnectionTime: StateFlow<String> get() = _lastConnectionTime
+        val _lastConnectionState = MutableStateFlow<String>("Disconnected")
+        val lastConnectionState: StateFlow<String> get() = _lastConnectionState
 
         private const val CHANNEL_ID = "BluetoothClientChannel"
         private const val PREFS_NAME = "button_config_prefs" // Ensure this matches SettingsActivity
@@ -68,6 +68,15 @@ class BLEClientService : Service() {
     override fun onCreate() {
         super.onCreate()
         bleClient = BLEClient(this)
+
+        // Observe the connection status from the BLEClient instance
+        bleClient.lastConnectionStatus
+            .onEach { status ->
+                _lastConnectionState.value = status
+                Log.d(TAG, "Connection status updated to: $status")
+            }
+            .launchIn(serviceScope)
+
         // Set the callback that BLEClient will invoke on any disconnection.
         bleClient.onDisconnect = {
             // This callback may be invoked from a background thread, so post to the main handler.
@@ -81,7 +90,7 @@ class BLEClientService : Service() {
                 }
             }
         }
-        Log.d(TAG, "BLEClientService onCreate: bleClient initialized and onDisconnect callback is set.")
+        Log.d(TAG, "BLEClientService onCreate: bleClient initialized and observers are set.")
     }
 
     @SuppressLint("MissingPermission")
@@ -131,6 +140,7 @@ class BLEClientService : Service() {
 
      override fun onDestroy() {
         super.onDestroy()
+        serviceScope.cancel() // Cancel the coroutine scope
         Log.d(TAG, "BLEClientService onDestroy.")
         cancelReconnect() // Cancel any pending reconnects
         if (::bleClient.isInitialized) {

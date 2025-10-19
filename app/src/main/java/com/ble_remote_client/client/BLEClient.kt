@@ -1,7 +1,6 @@
 package com.ble_remote_client.client
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCallback
@@ -9,11 +8,7 @@ import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothManager
-import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
-import android.bluetooth.le.ScanFilter
-import android.bluetooth.le.ScanResult
-import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.util.Log
 import android.os.Vibrator
@@ -37,8 +32,8 @@ class BLEClient(private val context: Context) {
     private var targetDevice: BluetoothDevice? = null // This is assigned but not used elsewhere, consider its purpose.
     val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> get() = _isConnected
-    val _lastConnectionTime = MutableStateFlow("Never")
-    val lastConnectionTime: StateFlow<String> get() = _lastConnectionTime
+    val _lastConnectionStatus = MutableStateFlow("Disconnected")
+    val lastConnectionStatus: StateFlow<String> get() = _lastConnectionStatus
     private var isScanning = false
     var onDisconnect: (() -> Unit)? = null
 
@@ -119,6 +114,7 @@ class BLEClient(private val context: Context) {
                 if (this@BLEClient.bluetoothGatt == gatt) {
                     this@BLEClient.bluetoothGatt = null
                 }
+                updateConnectionStatus(false)
             }
         }
 
@@ -230,9 +226,12 @@ class BLEClient(private val context: Context) {
     }
 
     private fun updateConnectionStatus(isConnected: Boolean) {
+        // This updates the status which is observed by the UI.
         if (isConnected) {
             val currentTime = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-            _lastConnectionTime.value = currentTime
+            _lastConnectionStatus.value = "Connected at $currentTime"
+        } else {
+            _lastConnectionStatus.value = "Disconnected"
         }
     }
 }

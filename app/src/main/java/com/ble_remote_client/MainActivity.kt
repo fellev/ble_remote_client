@@ -20,13 +20,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.findNavController
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
+import com.ble_remote_client.client.BLEClient
+import com.ble_remote_client.client.BLEClientService
 import com.ble_remote_client.client.ClientUtils
 import com.ble_remote_client.databinding.ActivityMainBinding
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -94,6 +98,12 @@ class MainActivity : AppCompatActivity() {
         chooseAutoConnectDeviceButton.setOnClickListener {
             showPairedDevicesDialog()
         }
+
+        lifecycleScope.launch {
+            BLEClientService.lastConnectionState.collect { status ->
+                setConnectionStatus(status)
+            }
+        }
     }
 
     override fun onResume() {
@@ -130,6 +140,10 @@ class MainActivity : AppCompatActivity() {
         } else {
             autoConnectDeviceStatusTextView.text = "Auto-connect device: Not selected"
         }
+    }
+
+    fun setConnectionStatus(status: String) {
+        connectionStatus.text = status
     }
 
     private fun requestBluetoothPermissionsIfNeeded() {
