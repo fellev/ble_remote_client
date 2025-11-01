@@ -11,5 +11,6 @@ data class AppConfig(
     var haToken: String = "",
     var targetDeviceName: String = "", // Added for BLE target device name
     var targetDeviceMacAddress: String = "98:A3:16:E2:64:3E", // Default MAC address
+    var notificationVolume: Int = 30, // Default volume percent
     var buttonConfigs: MutableList<ButtonConfig> = MutableList(4) { ButtonConfig(name = "Button ${it + 1}") }
 )

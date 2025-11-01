@@ -7,6 +7,7 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.SeekBar
 import android.widget.Spinner
 import androidx.appcompat.app.AppCompatActivity
 import com.google.gson.Gson
@@ -31,6 +32,7 @@ class SettingsActivity : AppCompatActivity() {
     private lateinit var editToken: EditText
     private lateinit var editTargetDeviceName: EditText
     private lateinit var editTargetDeviceMac: EditText // Added
+    private lateinit var seekBarVolume: SeekBar // Added
 
     private lateinit var appConfig: AppConfig
     private var selectedIndex = 0
@@ -53,7 +55,8 @@ class SettingsActivity : AppCompatActivity() {
         editToken = findViewById(R.id.editToken)
         editUrl = findViewById(R.id.editUrl)
         editTargetDeviceName = findViewById(R.id.editTargetDeviceName)
-        editTargetDeviceMac = findViewById(R.id.editTargetDeviceMac) // Added
+        editTargetDeviceMac = findViewById(R.id.editTargetDeviceMac)
+        seekBarVolume = findViewById(R.id.seekBarVolume)
 
 
         loadConfig()
@@ -81,7 +84,8 @@ class SettingsActivity : AppCompatActivity() {
         editToken.setText(appConfig.haToken)
         editUrl.setText(appConfig.haUrl)
         editTargetDeviceName.setText(appConfig.targetDeviceName)
-        editTargetDeviceMac.setText(appConfig.targetDeviceMacAddress) // Added
+        editTargetDeviceMac.setText(appConfig.targetDeviceMacAddress)
+        seekBarVolume.progress = appConfig.notificationVolume
 
         btnSave.setOnClickListener {
             // Update current button config
@@ -98,7 +102,8 @@ class SettingsActivity : AppCompatActivity() {
             appConfig.haToken = editToken.text.toString()
             appConfig.haUrl = editUrl.text.toString()
             appConfig.targetDeviceName = editTargetDeviceName.text.toString()
-            appConfig.targetDeviceMacAddress = editTargetDeviceMac.text.toString() // Added
+            appConfig.targetDeviceMacAddress = editTargetDeviceMac.text.toString()
+            appConfig.notificationVolume = seekBarVolume.progress
 
             saveConfig()
             finish()

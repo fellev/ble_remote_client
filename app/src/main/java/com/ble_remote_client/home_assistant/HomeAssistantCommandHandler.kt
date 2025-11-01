@@ -7,6 +7,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
+import android.media.MediaRouter
 import android.media.RingtoneManager
 import android.net.Uri
 import android.util.Log
@@ -59,10 +60,10 @@ class HomeAssistantCommandHandler(private val context: Context) {
             return
         }
 
-        sendHomeAssistantCommand(entityId, entityFriendlyName, action, config.haUrl, config.haToken)
+        sendHomeAssistantCommand(entityId, entityFriendlyName, action, config.haUrl, config.haToken, config.notificationVolume)
     }
 
-    private fun sendHomeAssistantCommand(entityId: String, entityFriendlyName: String, action: String, haUrl: String, token: String) {
+    private fun sendHomeAssistantCommand(entityId: String, entityFriendlyName: String, action: String, haUrl: String, token: String, volumePercent: Int) {
         val serviceDomain = entityId.substringBefore(".")
         val actionValue = when (action.lowercase()) {
             "on" -> "turn_on"
@@ -99,7 +100,7 @@ class HomeAssistantCommandHandler(private val context: Context) {
                 Log.i(TAG, "Home Assistant response: ${response.code}")
                 if (response.isSuccessful) {
                     Log.i(TAG, "Successfully sent command to Home Assistant for $entityFriendlyName")
-                    playNotificationSoundOnSpeaker(context, R.raw.programming_complete, 30)
+                    playNotificationSoundOnSpeaker(context, R.raw.programming_complete, volumePercent)
                     vibrate()
                 } else {
                 }
@@ -131,8 +132,8 @@ class HomeAssistantCommandHandler(private val context: Context) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val stream = AudioManager.STREAM_MUSIC
         val isMusicPlaying = audioManager.isMusicActive
+        val normalizedVolume = (volumePercent.coerceIn(0, 100) / 100f)
 
-        // Prepare audio focus request (ducking) for when music is playing
         var afRequest: AudioFocusRequest? = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             afRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
@@ -144,22 +145,14 @@ class HomeAssistantCommandHandler(private val context: Context) {
                 ).build()
         }
 
-        // If music is playing: play on current output (do not change routing/volume)
         if (isMusicPlaying) {
-            Log.i(TAG, "Music active: playing notification on current output (will request duck).")
-
-            // Request audio focus (duck)
+            Log.i(TAG, "Music active: playing notification on current output (duck).")
             val gotFocus = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val am = audioManager
-                am.requestAudioFocus(afRequest!!
-                ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                audioManager.requestAudioFocus(afRequest!!) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
             } else {
                 @Suppress("DEPRECATION")
-                audioManager.requestAudioFocus(
-                    null, // legacy needs listener but we skip, most devices still allow ducking via flags
-                    stream,
-                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
-                ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                audioManager.requestAudioFocus(null, stream, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK) ==
+                        AudioManager.AUDIOFOCUS_REQUEST_GRANTED
             }
             Log.i(TAG, "Audio focus (duck) granted=$gotFocus")
 
@@ -167,67 +160,46 @@ class HomeAssistantCommandHandler(private val context: Context) {
                 Log.e(TAG, "MediaPlayer.create returned null")
                 return
             }
-
             mp.setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build()
             )
-
-            // Do NOT call setPreferredDevice or toggle speakerphone; play on current route
             mp.setOnCompletionListener { player ->
                 try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        audioManager.abandonAudioFocusRequest(afRequest!!)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        audioManager.abandonAudioFocus(null)
-                    }
-                } catch (e: Throwable) {
-                    Log.w(TAG, "Failed to abandon audio focus: ${e.message}")
-                }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) audioManager.abandonAudioFocusRequest(afRequest!!)
+                    else @Suppress("DEPRECATION") audioManager.abandonAudioFocus(null)
+                } catch (e: Throwable) { Log.w(TAG, "abandonAudioFocus failed: ${e.message}") }
                 player.release()
-                Log.i(TAG, "Notification playback complete (music was active).")
             }
-
             mp.setOnErrorListener { player, what, extra ->
-                Log.e(TAG, "Playback error (music active): what=$what extra=$extra")
                 try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        audioManager.abandonAudioFocusRequest(afRequest!!)
-                    } else {
-                        @Suppress("DEPRECATION")
-                        audioManager.abandonAudioFocus(null)
-                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) audioManager.abandonAudioFocusRequest(afRequest!!)
+                    else @Suppress("DEPRECATION") audioManager.abandonAudioFocus(null)
                 } catch (_: Throwable) {}
                 player.release()
                 true
             }
-
             mp.start()
             return
         }
 
-        // === else: no music playing -> use preferred-device + dual-route volume trick ===
-        Log.i(TAG, "No music active: using speaker-preferred path with dual-route volume update.")
+        // === No music playing ===
+        Log.i(TAG, "No music active: playing with volumePercent=$volumePercent%")
 
-        // Save state
         val originalVolume = audioManager.getStreamVolume(stream)
         val maxVolume = audioManager.getStreamMaxVolume(stream)
-        val tempVolume = (maxVolume * 0.3f).toInt().coerceAtLeast(1)
+        val tempVolume = (maxVolume * normalizedVolume).toInt().coerceAtLeast(1)
 
         val originalSpeakerphoneOn = audioManager.isSpeakerphoneOn
         val originalBluetoothA2dpOn = audioManager.isBluetoothA2dpOn
-
-        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        val speakerDevice = outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+        audioManager.isSpeakerphoneOn = true
+        audioManager.isBluetoothA2dpOn = false
 
         val handler = Handler(Looper.getMainLooper())
-
-        var mp: MediaPlayer? = null
-        var preferredSet = false
-        var changedVolume = false
+        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+        val speakerDevice = outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
 
         fun safeSetStreamVolume(vol: Int) {
             try {
@@ -241,12 +213,12 @@ class HomeAssistantCommandHandler(private val context: Context) {
         fun setVolumeOnBothRoutes(targetVol: Int, onDone: () -> Unit) {
             try { audioManager.isSpeakerphoneOn = false } catch (e: Throwable) { Log.w(TAG, "speakerphoneOff failed: ${e.message}") }
             handler.postDelayed({
-                safeSetStreamVolume(targetVol) // attempt update BT device volume
+                safeSetStreamVolume(targetVol)
                 handler.postDelayed({
                     try { audioManager.mode = AudioManager.MODE_NORMAL; audioManager.isSpeakerphoneOn = true }
                     catch (e: Throwable) { Log.w(TAG, "speakerphoneOn failed: ${e.message}") }
                     handler.postDelayed({
-                        safeSetStreamVolume(targetVol) // update phone speaker volume
+                        safeSetStreamVolume(targetVol)
                         onDone()
                     }, 120)
                 }, 120)
@@ -268,104 +240,81 @@ class HomeAssistantCommandHandler(private val context: Context) {
             }, 120)
         }
 
+        val mp = MediaPlayer.create(context, resId) ?: run {
+            Log.e(TAG, "MediaPlayer.create returned null")
+            return
+        }
+        mp.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+        )
+
+        var preferredSet = false
         try {
-            mp = MediaPlayer.create(context, resId)
-            if (mp == null) {
-                Log.e(TAG, "MediaPlayer.create returned null")
-                return
-            }
-
-            mp.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-
-            try {
-                if (speakerDevice != null) {
-                    preferredSet = mp.setPreferredDevice(speakerDevice)
-                    Log.i(TAG, "setPreferredDevice(speaker) -> $preferredSet")
-                } else {
-                    Log.w(TAG, "No built-in speaker AudioDeviceInfo found")
-                }
-            } catch (e: Throwable) {
-                Log.w(TAG, "setPreferredDevice threw: ${e.message}")
-                preferredSet = false
-            }
-
-            // If BT was on and no music is playing, set volume on both
-            if (!audioManager.isMusicActive && originalBluetoothA2dpOn) {
-                setVolumeOnBothRoutes(tempVolume) {
-                    changedVolume = true
-                    try {
-                        Log.i(TAG, "Starting playback with preferredSet=$preferredSet")
-                        mp.start()
-                    } catch (e: Throwable) {
-                        Log.e(TAG, "Failed to start playback: ${e.message}")
-                    }
-                }
-            } else {
-                // no music and no BT -> just change volume for speaker
-                safeSetStreamVolume(tempVolume)
-                changedVolume = true
-                try {
-                    audioManager.mode = AudioManager.MODE_NORMAL
-                    audioManager.isSpeakerphoneOn = true
-                } catch (e: Throwable) {}
-                Log.i(TAG, "Starting playback (no music, BTconnected=$originalBluetoothA2dpOn)")
-                mp.start()
-            }
-
-            mp.setOnCompletionListener { player ->
-                handler.post {
-                    if (changedVolume) {
-                        restoreVolumeOnBothRoutes(originalVolume) {
-                            try {
-                                if (preferredSet) player.setPreferredDevice(null)
-                            } catch (e: Throwable) { Log.w(TAG, "clear pref device failed: ${e.message}") }
-                            try { player.release() } catch (_: Throwable) {}
-                            Log.i(TAG, "Playback complete; volumes and routing restored")
-                        }
-                    } else {
-                        try {
-                            if (preferredSet) player.setPreferredDevice(null)
-                            else audioManager.isSpeakerphoneOn = originalSpeakerphoneOn
-                        } catch (e: Throwable) { Log.w(TAG, "cleanup routing error: ${e.message}") }
-                        try { player.release() } catch (_: Throwable) {}
-                    }
-                }
-            }
-
-            mp.setOnErrorListener { player, what, extra ->
-                Log.e(TAG, "Playback error what=$what extra=$extra")
-                handler.post {
-                    try {
-                        if (changedVolume) {
-                            restoreVolumeOnBothRoutes(originalVolume) {
-                                try { if (preferredSet) player.setPreferredDevice(null) } catch (_: Throwable) {}
-                                try { player.release() } catch (_: Throwable) {}
-                            }
-                        } else {
-                            try { if (preferredSet) player.setPreferredDevice(null) else audioManager.isSpeakerphoneOn = originalSpeakerphoneOn } catch (_: Throwable) {}
-                            try { player.release() } catch (_: Throwable) {}
-                        }
-                    } catch (e: Throwable) {
-                        Log.w(TAG, "Error during error-path cleanup: ${e.message}")
-                    }
-                }
-                true
+            if (speakerDevice != null) {
+                preferredSet = mp.setPreferredDevice(speakerDevice)
+                Log.i(TAG, "setPreferredDevice(speaker) -> $preferredSet")
             }
         } catch (e: Throwable) {
-            Log.e(TAG, "Unexpected error preparing playback: ${e.message}")
-            try { mp?.release() } catch (_: Throwable) {}
-            if (mp == null) return
-            if (audioManager.isMusicActive) {
-                // if music started meanwhile, nothing to restore
-                return
+            Log.w(TAG, "setPreferredDevice threw: ${e.message}")
+            preferredSet = false
+        }
+
+        var changedVolume = false
+
+        try {
+            if (originalBluetoothA2dpOn) {
+                setVolumeOnBothRoutes(tempVolume) {
+                    changedVolume = true
+                    try { mp.start() } catch (e: Throwable) { Log.e(TAG, "start failed: ${e.message}") }
+                }
+            } else {
+                safeSetStreamVolume(tempVolume)
+                changedVolume = true
+                try { audioManager.mode = AudioManager.MODE_NORMAL; audioManager.isSpeakerphoneOn = true } catch (_: Throwable) {}
+                mp.start()
             }
-            // best-effort restore if changedVolume
-            try { if (audioManager.isBluetoothA2dpOn) restoreVolumeOnBothRoutes(originalVolume) {} else if (audioManager.isSpeakerphoneOn != audioManager.isSpeakerphoneOn) audioManager.isSpeakerphoneOn = originalSpeakerphoneOn } catch (_: Throwable) {}
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error starting playback: ${e.message}")
+            if (changedVolume) {
+                restoreVolumeOnBothRoutes(originalVolume) { try { mp.setPreferredDevice(null) } catch (_: Throwable) {} ; mp.release() }
+            } else {
+                try { mp.release() } catch (_: Throwable) {}
+            }
+            return
+        }
+
+        mp.setOnCompletionListener { player ->
+            handler.post {
+                if (changedVolume) {
+                    restoreVolumeOnBothRoutes(originalVolume) {
+                        try { if (preferredSet) player.setPreferredDevice(null) } catch (_: Throwable) {}
+                        try { player.release() } catch (_: Throwable) {}
+                        Log.i(TAG, "Playback complete; volumes and routing restored")
+                    }
+                } else {
+                    try { if (preferredSet) player.setPreferredDevice(null) else audioManager.isSpeakerphoneOn = originalSpeakerphoneOn } catch (_: Throwable) {}
+                    try { player.release() } catch (_: Throwable) {}
+                }
+            }
+        }
+
+        mp.setOnErrorListener { player, what, extra ->
+            Log.e(TAG, "Playback error what=$what extra=$extra")
+            handler.post {
+                if (changedVolume) {
+                    restoreVolumeOnBothRoutes(originalVolume) {
+                        try { if (preferredSet) player.setPreferredDevice(null) } catch (_: Throwable) {}
+                        try { player.release() } catch (_: Throwable) {}
+                    }
+                } else {
+                    try { if (preferredSet) player.setPreferredDevice(null) else audioManager.isSpeakerphoneOn = originalSpeakerphoneOn } catch (_: Throwable) {}
+                    try { player.release() } catch (_: Throwable) {}
+                }
+            }
+            true
         }
     }
 }
