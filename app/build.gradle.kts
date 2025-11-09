@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "com.ble_remote_client"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.ble_remote_client"
-        minSdk = 35
-        targetSdk = 35
+        minSdk = 36
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 

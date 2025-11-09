@@ -7,19 +7,15 @@ import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
-import android.media.MediaRouter
-import android.media.RingtoneManager
-import android.net.Uri
-import android.util.Log
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 import com.ble_remote_client.AppConfig
 import com.ble_remote_client.R
-import com.ble_remote_client.client.BLEClient
 import com.google.gson.Gson
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -130,9 +126,28 @@ class HomeAssistantCommandHandler(private val context: Context) {
     @SuppressLint("MissingPermission")
     fun playNotificationSoundOnSpeaker(context: Context, resId: Int, volumePercent: Int) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-        val stream = AudioManager.STREAM_MUSIC
         val isMusicPlaying = audioManager.isMusicActive
-        val normalizedVolume = (volumePercent.coerceIn(0, 100) / 100f)
+        val handler = Handler(Looper.getMainLooper())
+        val clampedPercent = volumePercent.coerceIn(0, 100)
+
+        // Save originals
+        val stream = AudioManager.STREAM_MUSIC
+        val originalStreamVol = try { audioManager.getStreamVolume(stream) } catch (_: Throwable) { 0 }
+        val maxStreamVol = try { audioManager.getStreamMaxVolume(stream) } catch (_: Throwable) { 15 }
+        val targetVol = (maxStreamVol * (clampedPercent / 100f)).toInt().coerceAtLeast(1)
+
+        val originalMode = try { audioManager.mode } catch (_: Throwable) { AudioManager.MODE_NORMAL }
+        val originalSpeakerphone = try { audioManager.isSpeakerphoneOn } catch (_: Throwable) { false }
+
+        // Find builtin speaker device if available
+        val outputs = try { audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS) } catch (_: Throwable) { emptyArray<AudioDeviceInfo>() }
+        val builtinSpeaker = outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+
+        var player: MediaPlayer? = null
+        var commDeviceUsed = false
+        var preferredDeviceUsed = false
+        var speakerphoneToggled = false
+        var restoreScheduled = false
 
         var afRequest: AudioFocusRequest? = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -185,136 +200,189 @@ class HomeAssistantCommandHandler(private val context: Context) {
             return
         }
 
-        // === No music playing ===
-        Log.i(TAG, "No music active: playing with volumePercent=$volumePercent%")
+        fun restoreAndFinish() {
+            if (restoreScheduled) return
+            restoreScheduled = true
 
-        val originalVolume = audioManager.getStreamVolume(stream)
-        val maxVolume = audioManager.getStreamMaxVolume(stream)
-        val tempVolume = (maxVolume * normalizedVolume).toInt().coerceAtLeast(1)
-
-        val originalSpeakerphoneOn = audioManager.isSpeakerphoneOn
-        val originalBluetoothA2dpOn = audioManager.isBluetoothA2dpOn
-        audioManager.isSpeakerphoneOn = true
-        audioManager.isBluetoothA2dpOn = false
-
-        val handler = Handler(Looper.getMainLooper())
-        val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-        val speakerDevice = outputs.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
-
-        fun safeSetStreamVolume(vol: Int) {
             try {
-                audioManager.setStreamVolume(stream, vol, 0)
-                Log.i(TAG, "setStreamVolume -> $vol")
+                // restore stream volume
+                audioManager.setStreamVolume(stream, originalStreamVol, 0)
             } catch (e: Throwable) {
-                Log.w(TAG, "setStreamVolume failed: ${e.message}")
+                Log.w(TAG, "Failed to restore stream volume: ${e.message}")
             }
-        }
 
-        fun setVolumeOnBothRoutes(targetVol: Int, onDone: () -> Unit) {
-            try { audioManager.isSpeakerphoneOn = false } catch (e: Throwable) { Log.w(TAG, "speakerphoneOff failed: ${e.message}") }
-            handler.postDelayed({
-                safeSetStreamVolume(targetVol)
-                handler.postDelayed({
-                    try { audioManager.mode = AudioManager.MODE_NORMAL; audioManager.isSpeakerphoneOn = true }
-                    catch (e: Throwable) { Log.w(TAG, "speakerphoneOn failed: ${e.message}") }
-                    handler.postDelayed({
-                        safeSetStreamVolume(targetVol)
-                        onDone()
-                    }, 120)
-                }, 120)
-            }, 120)
-        }
-
-        fun restoreVolumeOnBothRoutes(originalVol: Int, onDone: () -> Unit) {
-            try { audioManager.isSpeakerphoneOn = false } catch (e: Throwable) { Log.w(TAG, "speakerphoneOff restore failed: ${e.message}") }
-            handler.postDelayed({
-                safeSetStreamVolume(originalVol)
-                handler.postDelayed({
-                    try { audioManager.mode = AudioManager.MODE_NORMAL; audioManager.isSpeakerphoneOn = originalSpeakerphoneOn }
-                    catch (e: Throwable) { Log.w(TAG, "restore speakerphone failed: ${e.message}") }
-                    handler.postDelayed({
-                        safeSetStreamVolume(originalVol)
-                        onDone()
-                    }, 120)
-                }, 120)
-            }, 120)
-        }
-
-        val mp = MediaPlayer.create(context, resId) ?: run {
-            Log.e(TAG, "MediaPlayer.create returned null")
-            return
-        }
-        mp.setAudioAttributes(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-        )
-
-        var preferredSet = false
-        try {
-            if (speakerDevice != null) {
-                preferredSet = mp.setPreferredDevice(speakerDevice)
-                Log.i(TAG, "setPreferredDevice(speaker) -> $preferredSet")
-            }
-        } catch (e: Throwable) {
-            Log.w(TAG, "setPreferredDevice threw: ${e.message}")
-            preferredSet = false
-        }
-
-        var changedVolume = false
-
-        try {
-            if (originalBluetoothA2dpOn) {
-                setVolumeOnBothRoutes(tempVolume) {
-                    changedVolume = true
-                    try { mp.start() } catch (e: Throwable) { Log.e(TAG, "start failed: ${e.message}") }
+            try {
+                if (commDeviceUsed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    try { audioManager.clearCommunicationDevice() } catch (e: Throwable) { Log.w(TAG, "clearCommunicationDevice failed: ${e.message}") }
                 }
-            } else {
-                safeSetStreamVolume(tempVolume)
-                changedVolume = true
-                try { audioManager.mode = AudioManager.MODE_NORMAL; audioManager.isSpeakerphoneOn = true } catch (_: Throwable) {}
-                mp.start()
+            } catch (_: Throwable) {}
+
+            try {
+                if (speakerphoneToggled) audioManager.isSpeakerphoneOn = originalSpeakerphone
+            } catch (e: Throwable) {
+                Log.w(TAG, "Failed to restore speakerphone: ${e.message}")
             }
-        } catch (e: Throwable) {
-            Log.e(TAG, "Error starting playback: ${e.message}")
-            if (changedVolume) {
-                restoreVolumeOnBothRoutes(originalVolume) { try { mp.setPreferredDevice(null) } catch (_: Throwable) {} ; mp.release() }
-            } else {
-                try { mp.release() } catch (_: Throwable) {}
-            }
-            return
+
+            try { audioManager.mode = originalMode } catch (e: Throwable) { Log.w(TAG, "Failed to restore audio mode: ${e.message}") }
+
+            try {
+                player?.let {
+                    try { it.setOnCompletionListener(null) } catch (_: Throwable) {}
+                    try { it.setOnErrorListener(null) } catch (_: Throwable) {}
+                    try { it.release() } catch (_: Throwable) {}
+                }
+            } catch (_: Throwable) {}
+
         }
 
-        mp.setOnCompletionListener { player ->
-            handler.post {
-                if (changedVolume) {
-                    restoreVolumeOnBothRoutes(originalVolume) {
-                        try { if (preferredSet) player.setPreferredDevice(null) } catch (_: Throwable) {}
+        // Configure player creation function (so we can re-create on fallback if needed)
+        fun createPlayer(): MediaPlayer? {
+            val mp = try { MediaPlayer.create(context, resId) } catch (e: Throwable) {
+                Log.e(TAG, "MediaPlayer.create threw: ${e.message}")
+                null
+            } ?: return null
+
+            // Default attributes — will be adjusted per-path if needed
+            mp.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+
+            mp.setOnCompletionListener {
+                restoreAndFinish()
+            }
+            mp.setOnErrorListener { _, what, extra ->
+                Log.e(TAG, "Playback error what=$what extra=$extra")
+                restoreAndFinish()
+                true
+            }
+            return mp
+        }
+
+        // Try path 1: communication-device (API >= 31). This is the cleanest for routing to speaker.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && builtinSpeaker != null) {
+            try {
+                player = createPlayer()
+                if (player == null) {
+                    Log.w(TAG, "player creation failed on comm-device path")
+                } else {
+                    // switch to communication mode
+                    try { audioManager.mode = AudioManager.MODE_IN_COMMUNICATION } catch (e: Throwable) { Log.w(TAG, "set MODE_IN_COMMUNICATION failed: ${e.message}") }
+
+                    // set communication device to builtin speaker
+                    val setOk = try {
+                        audioManager.setCommunicationDevice(builtinSpeaker)
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "setCommunicationDevice threw: ${e.message}")
+                        false
+                    }
+                    Log.i(TAG, "setCommunicationDevice -> $setOk")
+
+                    // set temporary system media volume to target (so MediaPlayer won't be silent)
+                    Log.i(TAG, "setStreamVolume to $targetVol")
+                    try { audioManager.setStreamVolume(stream, targetVol, 0) } catch (e: Throwable) { Log.w(TAG, "setStreamVolume failed: ${e.message}") }
+
+                    // when using comm-device, use voice communication usage for best routing
+                    try {
+                        player.setAudioAttributes(
+                            AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                .build()
+                        )
+                    } catch (_: Throwable) {}
+
+                    commDeviceUsed = setOk
+                    // start playback
+                    try {
+                        player.start()
+                        return
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "player.start failed on comm-device path: ${e.message}")
+                        // fallthrough to fallback, but ensure we will release and recreate
                         try { player.release() } catch (_: Throwable) {}
-                        Log.i(TAG, "Playback complete; volumes and routing restored")
+                        player = null
+                    }
+                }
+            } catch (e: Throwable) {
+                Log.w(TAG, "Comm-device path exception: ${e.message}")
+                try { player?.release() } catch (_: Throwable) {}
+                player = null
+            }
+        }
+
+        // Path 2: try MediaPlayer.setPreferredDevice (per-player routing)
+        try {
+            player = createPlayer()
+            if (player != null && builtinSpeaker != null) {
+                val prefOk = try { player.setPreferredDevice(builtinSpeaker) } catch (e: Throwable) {
+                    Log.w(TAG, "setPreferredDevice threw: ${e.message}")
+                    false
+                }
+                Log.i(TAG, "setPreferredDevice -> $prefOk")
+                if (prefOk) {
+                    preferredDeviceUsed = true
+                    // set temporary system media volume so stream isn't silent
+                    try { audioManager.setStreamVolume(stream, targetVol, 0) } catch (e: Throwable) { Log.w(TAG, "setStreamVolume failed: ${e.message}") }
+                    try {
+                        player.start()
+                        return
+                    } catch (e: Throwable) {
+                        Log.w(TAG, "player.start failed with preferred device: ${e.message}")
+                        try { player.release() } catch (_: Throwable) {}
+                        player = null
                     }
                 } else {
-                    try { if (preferredSet) player.setPreferredDevice(null) else audioManager.isSpeakerphoneOn = originalSpeakerphoneOn } catch (_: Throwable) {}
+                    // preferred device failed — we'll fall through to speakerphone toggle fallback
                     try { player.release() } catch (_: Throwable) {}
+                    player = null
                 }
+            } else {
+                try { player?.release() } catch (_: Throwable) {}
+                player = null
             }
+        } catch (e: Throwable) {
+            Log.w(TAG, "Preferred-device path exception: ${e.message}")
+            try { player?.release() } catch (_: Throwable) {}
+            player = null
         }
 
-        mp.setOnErrorListener { player, what, extra ->
-            Log.e(TAG, "Playback error what=$what extra=$extra")
-            handler.post {
-                if (changedVolume) {
-                    restoreVolumeOnBothRoutes(originalVolume) {
-                        try { if (preferredSet) player.setPreferredDevice(null) } catch (_: Throwable) {}
-                        try { player.release() } catch (_: Throwable) {}
-                    }
-                } else {
-                    try { if (preferredSet) player.setPreferredDevice(null) else audioManager.isSpeakerphoneOn = originalSpeakerphoneOn } catch (_: Throwable) {}
-                    try { player.release() } catch (_: Throwable) {}
-                }
+        // Path 3: fallback — toggle speakerphone temporarily and start
+        try {
+            player = createPlayer()
+            if (player == null) {
+                Log.e(TAG, "player creation failed for fallback path")
+                restoreAndFinish()
+                return
             }
-            true
+
+            // Toggle speakerphone on so playback routes to phone speaker—best-effort.
+            try {
+                audioManager.mode = AudioManager.MODE_NORMAL
+                audioManager.isSpeakerphoneOn = true
+                speakerphoneToggled = true
+            } catch (e: Throwable) {
+                Log.w(TAG, "speakerphone toggle failed: ${e.message}")
+            }
+
+            // Wait briefly for routing to settle, then set stream volume and start
+            handler.postDelayed({
+                try { audioManager.setStreamVolume(stream, targetVol, 0) } catch (e: Throwable) { Log.w(TAG, "setStreamVolume failed: ${e.message}") }
+                try {
+                    player.start()
+                } catch (e: Throwable) {
+                    Log.e(TAG, "fallback player.start failed: ${e.message}")
+                    restoreAndFinish()
+                }
+            }, 120L)
+
+            return
+        } catch (e: Throwable) {
+            Log.w(TAG, "Fallback path exception: ${e.message}")
+            try { player?.release() } catch (_: Throwable) {}
+            restoreAndFinish()
         }
     }
 }
